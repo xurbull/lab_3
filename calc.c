@@ -228,8 +228,10 @@ ExprRes parse_primary() {
         res.val.is_float = true; res.val.f = current_token.f_val;
         advance();
     } else if (current_token.type == TOK_LPAREN) {
+        size_t lparen_pos = current_token.pos; 
         advance();
         res = parse_expr();
+        res.pos = lparen_pos;                  
         if (current_token.type != TOK_RPAREN) {
             set_error(current_token.pos);
         } else {
@@ -295,16 +297,25 @@ Value eval_op(Value left, Value right, TokenType op, size_t op_pos, size_t right
             res.i = left.i / right.i;
         }        
     } else if (op == TOK_POW) {
-        if (lf < 0.0 && floor(rf) != rf) {
-            set_error(op_pos); // Catch NaN
-            return res;
-        }
+        if (!res.is_float) {
+            // integer
+            if (right.i < 0) { 
+                set_error(right_pos);
+                return res; 
+            }
+            res.i = int_pow(left.i, right.i);
+        } else {
+            if (lf < 0.0 && floor(rf) != rf) {
+                set_error(op_pos); 
+                return res;
+            }
 
-        res.f = pow(lf, rf);
+            res.f = pow(lf, rf);
 
-        if (!isfinite(res.f)) {
-            set_error(op_pos); 
-            return res;
+            if (!isfinite(res.f)) {
+                set_error(op_pos); 
+                return res;
+            }
         }
     }
     return res;
