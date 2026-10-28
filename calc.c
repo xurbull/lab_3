@@ -1,6 +1,5 @@
 // Name: Kanan Aliyev 251ADB099
-// https://github.com/your-username/calc-lab-repo
-// Compile with: gcc -O2 -g -Wall -Wextra -std=c17 -fsanitize=address,undefined -o calc calc.c -lm
+// Compile with: gcc -O2 -Wall -Wextra -std=c17 -o calc calc.c -lm
 // Resources used: external sites(written as comments in the code)
 
 #include <stdio.h>
@@ -388,8 +387,9 @@ ExprRes parse_expr() {
 void process_file(const char *in_path, const char *out_path) {
     FILE *f = fopen(in_path, "rb");
     if (!f) {
-        return;
-    } 
+        fprintf(stderr, "error\n");
+        exit(1);
+    }
     
     // to get size of the file
     // putting the pointer at the end of the file, getting the position, and then putting it back to the start
@@ -446,21 +446,23 @@ void process_file(const char *in_path, const char *out_path) {
 
     // output the results to the output file
     FILE *out = fopen(out_path, "w");
-    if (out) {
-        if (has_error) {
-            fprintf(out, "ERROR:%zu\n", global_error_pos);
-        } else {
-            for (size_t i = 0; i < res_count; i++) {
-                if (results[i].is_float) {
-                    fprintf(out, "%.15g\n", results[i].f);
-                } else {
-                    fprintf(out, "%lld\n", results[i].i);
-                }
-            }
-        }
-        fclose(out);
+    if (!out) {
+        fprintf(stderr, "error\n");
+        exit(1);
     }
 
+    if (has_error) {
+        fprintf(out, "ERROR:%zu\n", global_error_pos);
+    } else {
+        for (size_t i = 0; i < res_count; i++) {
+            if (results[i].is_float) {
+                fprintf(out, "%.15g\n", results[i].f);
+            } else {
+                fprintf(out, "%lld\n", results[i].i);
+            }
+        }
+    }
+    fclose(out);
     free(results);
     free(src_buffer);
 }
@@ -486,6 +488,27 @@ void extract_basename(const char *path, char *base) {
     }
 }
 
+void extract_folder_basename(const char *path, char *base) {
+    char temp[1024];
+    strncpy(temp, path, sizeof(temp) - 1);
+    temp[sizeof(temp) - 1] = '\0';
+    
+    // remove trailing slashes if they exist
+    size_t len = strlen(temp);
+    while (len > 0 && temp[len - 1] == '/') {
+        temp[len - 1] = '\0';
+        len--;
+    }
+    
+    // find the last slash
+    const char *last_slash = strrchr(temp, '/');
+    if (last_slash != NULL) {
+        strcpy(base, last_slash + 1);
+    } else {
+        strcpy(base, temp);
+    }
+}
+
 int main(int argc, char **argv) {
     #define NAME_ID "kanan_aliyev_251adb099"
 
@@ -495,39 +518,46 @@ int main(int argc, char **argv) {
 
     // parse command line arguments
     for (int i = 1; i < argc; i++) {
-        if ((strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "-dir") == 0) && i + 1 < argc) {
+        if ((strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "-dir") == 0 || strcmp(argv[i], "--dir") == 0) && i + 1 < argc) {
             in_dir = argv[++i];
-        } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+        } else if ((strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "-output-dir") == 0 || strcmp(argv[i], "--output-dir") == 0) && i + 1 < argc) {
             out_dir = argv[++i];
+        } else if (argv[i][0] == '-') {
+            fprintf(stderr, "error\n");
+            return 1;
         } else {
             in_file = argv[i];
         }
     }
 
     if (!in_dir && !in_file) {
-        fprintf(stderr, "Missing input file or directory\n");
+        fprintf(stderr, "error\n");
         return 1;
     }
 
     if (in_dir) {
         DIR *d = opendir(in_dir);
         if (!d) {
-            fprintf(stderr, "Cannot open directory %s\n", in_dir);
+            fprintf(stderr, "error\n");
             return 1;
         }
 
-        // create the output directory with permissions for read, write, execute
+        char def_dir[2048] = {0};
+
         if (out_dir) {
             mkdir(out_dir, 0777);
+        } else {
+            char folder_base[512];
+            extract_folder_basename(in_dir, folder_base);
+            snprintf(def_dir, sizeof(def_dir), "%s_%s", folder_base, NAME_ID);
+            mkdir(def_dir, 0777);
         }
         
-        // used external site(https://stackoverflow.com/questions/308695/how-do-i-concatenate-const-literal-strings-in-c)
         struct dirent *ent;
         while ((ent = readdir(d)) != NULL) {
-        // check if the file has a .txt extension and is at least 4 characters long
             if (strstr(ent->d_name, ".txt") && strlen(ent->d_name) >= 4 && strcmp(ent->d_name + strlen(ent->d_name) - 4, ".txt") == 0) {
                 
-                char in_path[1024];
+                char in_path[4096];
                 snprintf(in_path, sizeof(in_path), "%s/%s", in_dir, ent->d_name);
                 
                 char base[512];
@@ -537,9 +567,6 @@ int main(int argc, char **argv) {
                 if (out_dir) {
                     snprintf(out_path, sizeof(out_path), "%s/%s_%s.txt", out_dir, base, NAME_ID);
                 } else {
-                    char def_dir[2048];
-                    snprintf(def_dir, sizeof(def_dir), "%s_%s", base, NAME_ID);
-                    mkdir(def_dir, 0777);
                     snprintf(out_path, sizeof(out_path), "%s/%s_%s.txt", def_dir, base, NAME_ID);
                 }
                 process_file(in_path, out_path);
@@ -550,12 +577,9 @@ int main(int argc, char **argv) {
         char base[512];
         extract_basename(in_file, base);
         
-        if (out_dir) {
-            mkdir(out_dir, 0777);
-        }
-
         char out_path[4096];
         if (out_dir) {
+            mkdir(out_dir, 0777);
             snprintf(out_path, sizeof(out_path), "%s/%s_%s.txt", out_dir, base, NAME_ID);
         } else {
             char def_dir[2048];
